@@ -23,7 +23,6 @@ void *mythread(void *arg) {
 }
 int main(int argc, char *argv[]) {
 
-    int rc;
     pthread_t p;
     myret_t *m;
     printf("m 的值:%p\n",m);
