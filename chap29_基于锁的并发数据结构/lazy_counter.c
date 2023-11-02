@@ -17,14 +17,14 @@ void init(counter_t *c, int threshold) {
 
     c->global = 0;
     pthread_mutex_init(&c->glock, NULL);
-
+    // 初始化 4 个锁
     int i;
     for (i = 0; i < NUMCPUS; i++) {
         c->local[i] = 0;
         pthread_mutex_init(&c->llock[i], NULL);
     }
 }
-
+// 更新数字
 void update(counter_t *c, int threadID, int amt) {
     for (int i = 0; i < COUNT_PER_THREAD; i++) {
         pthread_mutex_lock(&c->llock[threadID]);
