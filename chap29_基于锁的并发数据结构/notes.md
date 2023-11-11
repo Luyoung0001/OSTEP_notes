@@ -100,6 +100,177 @@
 
 以下这个例子,将会展示另一种实现并发队列的方法.
 
+```C
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+// 定义节点类型
+typedef struct node_t {
+    int value;
+    struct node_t *next;
+} node_t;
+
+// 定义一个队列
+typedef struct queue_t {
+    node_t *head;
+    node_t *tail;
+    pthread_mutex_t headLock;
+    pthread_mutex_t tailLock;
+} queue_t;
+
+// 初始化一个队列
+void queueInit(queue_t *queue) {
+    // 创建一个空的节点,然后让队头和队尾都指向它
+    node_t *temp = (node_t *)malloc(sizeof(node_t));
+    temp->next = NULL;
+    queue->head = queue->tail = temp;
+    // 然后初始化两个锁
+    pthread_mutex_init(&queue->headLock, NULL);
+    pthread_mutex_init(&queue->tailLock, NULL);
+}
+// 进队列
+void enQueue(queue_t *queue, int value) {
+    node_t *tmp = (node_t *)malloc(sizeof(node_t));
+    if (tmp == NULL) {
+        printf("内存分配失败!\n");
+        return;
+    }
+    tmp->value = value;
+    tmp->next = NULL;
+    // 访问队尾,直接事物化
+    pthread_mutex_lock(&queue->tailLock);
+    // 尾插法
+    queue->tail->next = tmp;
+    queue->tail = tmp;
+    pthread_mutex_unlock(&queue->tailLock);
+}
+// 删除元素
+int deQueue(queue_t *queue, int *value) {
+    pthread_mutex_lock(&queue->headLock);
+    // 用临时变量指向头结点,而不是第一个元素
+    node_t *temp = queue->head;
+    // 用 newHead 指向要删除的元素
+    node_t *newHead = temp->next;
+    if (newHead == NULL) {
+        // 空列为空
+        pthread_mutex_unlock(&queue->headLock);
+        return -1; // 失败
+    }
+    *value = newHead->value;
+    queue->head =
+        newHead; // 相当于踢出队列(访问不到),但是还真是存在,让其充当头结点,这个技巧很不错,缺点是头结点不停地变化
+    pthread_mutex_unlock(&queue->headLock);
+    free(temp);
+    return 0;
+}
+```
+仔细研究这段代码，你会发现有两个锁，一个负责队列头，另一个负责队列尾。这两个锁使得入队列操作和出队列操作可以并发执行，因为入队列只访问tail锁，而出队列只访问head锁。
+
+## 并发散列表
+
+讨论最后一个应用广泛的并发数据结构，散列表. 我们只关注不需要调整大小的简单散列表:
+
+```C
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+// 定义链表结点
+typedef struct node_t {
+    int key;
+    struct node_t *next;
+} node_t;
+
+// 定义一个链表
+typedef struct list_t {
+    node_t *head;
+    pthread_mutex_t lock; // 锁
+} list_t;
+
+// 链表初始化
+void listInit(list_t *list) {
+    list->head = NULL;
+    pthread_mutex_init(&list->lock, NULL);
+}
+// 定义参数
+typedef struct arg_t {
+    list_t *list;
+    int key;
+} arg_t;
+// 插入
+int listInsert(list_t *list, int key) {
+    pthread_mutex_lock(&list->lock);
+    node_t *newNode = (node_t *)malloc(sizeof(node_t));
+    if (newNode == NULL) {
+        printf("内存分配失败!\n");
+        pthread_mutex_unlock(&list->lock);
+        return -1; // 失败
+    }
+    // 赋值并插入到链表,头插法,其实就是加了个锁....
+    newNode->key = key;
+    newNode->next = list->head;
+    list->head = newNode;
+    pthread_mutex_unlock(&list->lock);
+    return 0; // 成功
+}
+
+// 查找
+int listLookUp(list_t *list, int target) {
+    pthread_mutex_lock(&list->lock);
+    node_t *cur = list->head;
+    while (cur != NULL) {
+        if (cur->key == target) {
+            pthread_mutex_unlock(&list->lock);
+            return 0;
+        }
+        cur = cur->next;
+    }
+    pthread_mutex_unlock(&list->lock);
+    return -1;
+}
+#define BUCKETS 101
+typedef struct hash_t {
+    list_t lists[BUCKETS];
+} hash_t;
+
+void hashInit(hash_t *H) {
+    for (int i = 0; i < BUCKETS; i++) {
+        listInit(&H->lists[i]);
+    }
+}
+
+// 插入
+int insertHash(hash_t *H, int key) {
+    // 根据插入的值确定一个桶
+    int bucket = key % BUCKETS;
+    // 然后再桶里面插入这个值
+    return listInsert(&H->lists[bucket], key);
+}
+// 查询
+int lookUpHash(hash_t *H, int key) {
+    // 根据插入的值找到这个桶
+    int bucket = key % BUCKETS;
+    // 在这个桶里面查找
+    return listLookUp(&H->lists[bucket], key);
+}
+```
+
+本例的散列表使用我们之前实现的并发链表，性能特别好。每个散列桶（每个桶都是一个链表）都有一个锁，而不是整个散列表只有一个锁，从而支持许多并发操作.
+
+![Alt text](image-2.png)
+
+## 建议：避免不成熟的优化（Knuth定律）
+
+实现并发数据结构时，先从最简单的方案开始，也就是加一把大锁来同步。这样做，你很可能构建了正确的锁。如果发现性能问题，那么就改进方法，只要优化到满足需要即可。正如Knuth的著名说法“不成熟的优化是所有坏事的根源。”
+
+## 小结
+
+从计数器到链表队列，最后到大量使用的散列表。同时，我们也学习到：控制流变化时注意获取锁和释放锁；增加并发不一定能提高性能；有性能问题的时候再做优化。关于最后一点，避免不成熟的优化（premature optimization），对于所有关心性能的开发者都有用。我们让整个应用的某一小部分变快，却没有提高整体性能，其实没有价值。
+
+如果是很频繁的触发,那么更应该注意优化带来的开销.
+
+
+
+
 
 
 
