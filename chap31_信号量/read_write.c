@@ -2,44 +2,45 @@
 #include <semaphore.h>
 #include <stdio.h>
 #include <string.h>
+#include <fcntl.h>
 // 读取的空间
 char space[10] = "hello";
 
 // 读者写者锁
 typedef struct _rwlock_t {
-    sem_t *lock;
-    sem_t *writelock;
+    sem_t lock;
+    sem_t writelock;
     int readers;
 } rwlock_t;
 
 // 初始化
 void rwlock_init(rwlock_t *rw) {
     rw->readers = 0;
-    rw->lock = sem_open("rw_lock", O_CREAT, S_IRUSR | S_IWUSR, 1);
-    rw->writelock = sem_open("rw_writelock", O_CREAT, S_IRUSR | S_IWUSR, 1);
+    sem_init(&rw->lock,0,1);
+    sem_init(&rw->writelock,0,1);
 }
 // 获得读锁(实际上就不需要上锁,上锁只是为了修改 rw)
 void rwlock_acquire_readlock(rwlock_t *rw) {
-    sem_wait(rw->lock);
+    sem_wait(&rw->lock);
     rw->readers++;
     if (rw->readers == 1) {
-        sem_wait(rw->writelock); // 第一个读者需要抢占写锁
+        sem_wait(&rw->writelock); // 第一个读者需要抢占写锁
     }
-    sem_post(rw->lock);
+    sem_post(&rw->lock);
 }
 // 释放读锁(实际上就不需要上锁,上锁只是为了修改 rw)
 void rwlock_release_readlock(rwlock_t *rw) {
-    sem_wait(rw->lock);
+    sem_wait(&rw->lock);
     rw->readers--;
     if (rw->readers == 0) {
-        sem_post(rw->writelock); // 最后一个读者需要释放写锁
+        sem_post(&rw->writelock); // 最后一个读者需要释放写锁
     }
-    sem_post(rw->lock);
+    sem_post(&rw->lock);
 }
 // 获得写锁
-void rwlock_acquire_writelock(rwlock_t *rw) { sem_wait(rw->writelock); }
+void rwlock_acquire_writelock(rwlock_t *rw) { sem_wait(&rw->writelock); }
 // 释放写锁
-void rwlock_release_writelock(rwlock_t *rw) { sem_post(rw->writelock); }
+void rwlock_release_writelock(rwlock_t *rw) { sem_post(&rw->writelock); }
 
 rwlock_t rwlock;
 
@@ -93,8 +94,8 @@ int main() {
     pthread_join(p_w4, NULL);
     pthread_join(p_w5, NULL);
 
-    sem_close(rwlock.lock);
-    sem_close(rwlock.writelock);
+    sem_close(&rwlock.lock);
+    sem_close(&rwlock.writelock);
 
     sem_unlink("rw_lock");
     sem_unlink("rw_writelock");
