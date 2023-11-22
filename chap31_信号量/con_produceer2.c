@@ -52,7 +52,7 @@ int main() {
     full = sem_open("full", O_CREAT, S_IRUSR | S_IWUSR, 0);
     mutex = sem_open("mutex", O_CREAT, S_IRUSR | S_IWUSR, 1);
     pthread_t p1, p2, p3;
-    int loop1 = 5;
+    int loop1 = 10;
     int loop3 = 10;
     pthread_create(&p1, NULL, producer, &loop1);
     pthread_create(&p2, NULL, producer, &loop1);

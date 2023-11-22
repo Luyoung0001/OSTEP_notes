@@ -43,9 +43,9 @@ void *consumer(void *arg) {
     for (int i = 0; i < loops; i++) {
 
         sem_wait(full);
-        sem_wait(mutex);
+        //sem_wait(mutex);
         value = get();
-        sem_post(mutex);
+        //sem_post(mutex);
         sem_post(empty);
 
         printf("消费:%d\n", value);
@@ -57,8 +57,8 @@ int main() {
     full = sem_open("full", O_CREAT, S_IRUSR | S_IWUSR, 0);
     mutex = sem_open("mutex", O_CREAT, S_IRUSR | S_IWUSR, 1);
     pthread_t p1, p2, p3, p4;
-    int loop1 = 3;
-    int loop2 = 3;
+    int loop1 = 10;
+    int loop2 = 10;
     pthread_create(&p1, NULL, producer, &loop1);
     pthread_create(&p2, NULL, producer, &loop1);
     pthread_create(&p3, NULL, consumer, &loop2);
